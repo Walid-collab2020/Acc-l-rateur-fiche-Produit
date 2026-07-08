@@ -1,0 +1,12 @@
+fastapi>=0.112.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.0
+pydantic>=2.11
+pydantic-settings>=2.7
+python-multipart>=0.0.9
+anthropic>=0.40.0
+python-docx>=1.1.0
+openpyxl>=3.1.0
+aiofiles>=24.1.0
+pdfminer.six
+pywin32

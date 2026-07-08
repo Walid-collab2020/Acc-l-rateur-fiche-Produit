@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #ffffff;
+    color: #000000;
+    font-family: "Graphik", "Inter", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 400;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    color: #000000;
+  }
+}
+
+@layer components {
+  /* Primary CTA — Accenture purple, flat/sharp edges */
+  .btn-primary {
+    @apply bg-[#A100FF] hover:bg-[#7700CC] text-white font-semibold py-2 px-4 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+    border-radius: 0;
+  }
+
+  /* Secondary button — white, thin border */
+  .btn-secondary {
+    @apply bg-white hover:bg-[#F2F2F2] text-black font-medium py-2 px-4 border border-[#E0E0E0] transition-colors duration-150;
+    border-radius: 0;
+  }
+
+  /* Card — white, thin border, no shadow */
+  .card {
+    @apply bg-white border border-[#E0E0E0] p-6;
+  }
+
+  /* Status badges — semantic colours preserved */
+  .badge-conforme {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800;
+  }
+  .badge-ecart {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800;
+  }
+  .badge-manquant {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800;
+  }
+  .badge-progress {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-[#F3E0FF] text-[#7700CC];
+  }
+  .badge-validated {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800;
+  }
+}
