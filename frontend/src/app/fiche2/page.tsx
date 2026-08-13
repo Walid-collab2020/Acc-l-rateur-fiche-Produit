@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Wand2, Download, AlertTriangle, CheckCircle, ChevronDown, ChevronRight,
@@ -8,7 +8,7 @@ import {
 import {
   productsApi, documentsApi, ficheDirectApi, reportingApi,
   type Product, type Document, type FicheDirectItem, type DocWarning, type FicheDirectVersion,
-  type FicheExtraInfoItem, type FicheItemHistoryEntry,
+  type FicheExtraInfoItem, type FicheItemHistoryEntry, type TemplateVersion,
 } from "@/lib/api";
 
 function ValidateButton({ productId }: { productId: number }) {
@@ -114,25 +114,73 @@ function SourceCitations({ sourceParagraph, sourcePage }: { sourceParagraph?: st
 
 // ── Panneau justificatif étendu ───────────────────────────────────────────────
 function JustificatifsPanel({
-  item, show, productId, history,
+  item, show, productId, history, onConsigneSave,
 }: {
   item: FicheDirectItem;
   show: boolean;
   productId: number;
   history?: FicheItemHistoryEntry[];
+  onConsigneSave?: (parameter: string, sheet: string, newConsigne: string) => void;
 }) {
+  const [editingConsigne, setEditingConsigne] = useState(false);
+  const [consigneValue, setConsigneValue] = useState(item.valeurs_possibles || "");
+
   if (!show) return null;
   const hasContent = item.source_paragraph || item.source_citation || item.ai_comment
     || item.valeurs_possibles || item.justification || (history && history.length > 0);
   if (!hasContent) return null;
 
+  const handleConsigneSave = () => {
+    if (onConsigneSave && consigneValue.trim() !== (item.valeurs_possibles || "")) {
+      onConsigneSave(item.parameter, item.sheet, consigneValue.trim());
+    }
+    setEditingConsigne(false);
+  };
+
   return (
     <div className="mt-1.5 bg-[#F9F6FF] border border-[#E0CCFF] px-3 py-2 text-[11px] leading-snug space-y-1.5">
       {/* Consigne de saisie */}
-      {item.valeurs_possibles && (
+      {(item.valeurs_possibles || editingConsigne) && (
         <div>
-          <span className="font-semibold text-[#A100FF]">Consigne de saisie : </span>
-          <span className="text-[#3D3D3D]">{item.valeurs_possibles}</span>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="font-semibold text-[#A100FF]">Consigne de saisie</span>
+            {!editingConsigne && (
+              <button
+                onClick={() => { setConsigneValue(item.valeurs_possibles || ""); setEditingConsigne(true); }}
+                className="text-[#A100FF] hover:text-[#7B00CC] opacity-60 hover:opacity-100 transition-opacity"
+                title="Modifier la consigne de saisie"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {editingConsigne ? (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                value={consigneValue}
+                onChange={e => setConsigneValue(e.target.value)}
+                className="w-full border border-[#A100FF]/40 px-2 py-1.5 text-[11px] text-[#3D3D3D] focus:outline-none focus:border-[#A100FF] resize-y min-h-[60px]"
+                autoFocus
+              />
+              <div className="flex gap-1.5 justify-end">
+                <button
+                  onClick={() => setEditingConsigne(false)}
+                  className="text-[11px] text-[#6A6A6A] px-2 py-0.5 border border-[#E0E0E0] hover:bg-[#F2F2F2]"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleConsigneSave}
+                  disabled={consigneValue.trim() === (item.valeurs_possibles || "")}
+                  className="text-[11px] text-white bg-[#A100FF] px-2 py-0.5 disabled:opacity-40 hover:bg-[#7B00CC]"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          ) : (
+            <span className="text-[#3D3D3D]">{item.valeurs_possibles}</span>
+          )}
         </div>
       )}
       {/* Source IA */}
@@ -174,6 +222,60 @@ function JustificatifsPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Dialog confirmation génération nouvelle fiche modèle ─────────────────────
+function ConsigneConfirmDialog({
+  parameter,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  parameter: string;
+  onConfirm: (createTemplate: boolean) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white shadow-xl border border-[#E0CCFF] p-6 max-w-sm w-full mx-4">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-8 h-8 rounded-full bg-[#F3E0FF] flex items-center justify-center shrink-0">
+            <BookOpen className="w-4 h-4 text-[#A100FF]" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-black">Nouvelle fiche modèle ?</h3>
+            <p className="text-xs text-[#6A6A6A] mt-1">
+              La consigne de <span className="font-medium text-black">{parameter}</span> a été modifiée.
+              <br />
+              Voulez-vous générer une nouvelle version de la fiche modèle Excel avec cette consigne ?
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={() => onConfirm(false)}
+            disabled={isPending}
+            className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+          >
+            Non — Garder l&apos;actuelle
+          </button>
+          <button
+            onClick={() => onConfirm(true)}
+            disabled={isPending}
+            className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {isPending ? (
+              <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <BookOpen className="w-3 h-3" />
+            )}
+            Oui — Générer
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -255,6 +357,10 @@ export default function FicheProduit2Page() {
   const [localPatches, setLocalPatches] = useState<Record<number, { user_value?: string | null; user_comment?: string | null; user_status?: string | null }>>({});
   // Historique par item (chargé à la demande)
   const [historyCache, setHistoryCache] = useState<Record<number, FicheItemHistoryEntry[]>>({});
+  // Consigne de saisie — édition globale
+  const [consigneConfirm, setConsigneConfirm] = useState<{ parameter: string; sheet: string; consigne: string } | null>(null);
+  // Version du template sélectionnée pour la génération
+  const [selectedTemplateFilename, setSelectedTemplateFilename] = useState<string>("");
 
   const MODEL_OPTIONS = [
     { value: "anthropic",    label: "Claude Sonnet 4.6", sub: "Anthropic — Recommandé" },
@@ -293,6 +399,12 @@ export default function FicheProduit2Page() {
     queryKey: ["fiche2-extra-info", selectedProduct, effectiveVersion],
     queryFn: () => ficheDirectApi.extraInfo(selectedProduct!, effectiveVersion ?? undefined).then(r => r.data),
     enabled: !!selectedProduct && !!effectiveVersion,
+  });
+
+  const { data: templateVersions = [] } = useQuery<TemplateVersion[]>({
+    queryKey: ["fiche2-template-versions"],
+    queryFn: () => ficheDirectApi.templateVersions().then(r => r.data),
+    staleTime: 30000,
   });
 
   // ── Sheets list from items ──
@@ -385,12 +497,23 @@ export default function FicheProduit2Page() {
     ? "Génération en cours (4 onglets séquentiels, 15–25 min)…"
     : `Génération en cours — ${selectedSheets} (3–6 min)…`;
 
+  const [lastGenerationTokens, setLastGenerationTokens] = useState<{ input: number; output: number; total: number } | null>(null);
+
   const generateMutation = useMutation({
     mutationFn: () =>
-      ficheDirectApi.generate(selectedProduct!, Array.from(selectedDocIds), providerBase, sheetsParam).then(r => r.data),
+      ficheDirectApi.generate(
+        selectedProduct!,
+        Array.from(selectedDocIds),
+        providerBase,
+        sheetsParam,
+        selectedTemplateFilename || undefined,
+      ).then(r => r.data),
     onSuccess: (data) => {
       setIsGenerating(false);
       setGenerateWarnings(data.warnings || []);
+      if (data.tokens_total) {
+        setLastGenerationTokens({ input: data.tokens_input ?? 0, output: data.tokens_output ?? 0, total: data.tokens_total });
+      }
       queryClient.invalidateQueries({ queryKey: ["fiche2-versions", selectedProduct] });
       queryClient.invalidateQueries({ queryKey: ["fiche2-items", selectedProduct] });
       queryClient.invalidateQueries({ queryKey: ["fiche2-extra-info", selectedProduct] });
@@ -435,6 +558,17 @@ export default function FicheProduit2Page() {
     },
   });
 
+  const updateConsigneMutation = useMutation({
+    mutationFn: ({ parameter, sheet, consigne, createTemplate }: {
+      parameter: string; sheet: string; consigne: string; createTemplate: boolean;
+    }) => ficheDirectApi.updateConsigne(parameter, sheet, consigne, createTemplate),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fiche2-items", selectedProduct] });
+      queryClient.invalidateQueries({ queryKey: ["fiche2-template-versions"] });
+      setConsigneConfirm(null);
+    },
+  });
+
   const bulkValidateMutation = useMutation({
     mutationFn: (ids: number[]) => ficheDirectApi.bulkValidate(selectedProduct!, ids),
     onSuccess: (_, ids) => {
@@ -474,6 +608,20 @@ export default function FicheProduit2Page() {
 
   const validateItem = (item: FicheDirectItem) => {
     patchMutation.mutate({ itemId: item.id, body: { user_status: "valide_metier" } });
+    // Si item en contradiction, trouver le doublon et le passer en "voir_kapia"
+    if (item.status === "Sources contradictoires") {
+      const sibling = allItems.find(i =>
+        i.id !== item.id &&
+        i.parameter === item.parameter &&
+        i.status === "Sources contradictoires"
+      );
+      if (sibling) {
+        const siblingStatus = localPatches[sibling.id]?.user_status ?? sibling.user_status;
+        if (siblingStatus !== "valide_metier") {
+          patchMutation.mutate({ itemId: sibling.id, body: { user_status: "voir_kapia" } });
+        }
+      }
+    }
   };
 
   const toggleSelectId = (id: number) => {
@@ -488,6 +636,20 @@ export default function FicheProduit2Page() {
     });
   };
 
+  const handleConsigneSave = (parameter: string, sheet: string, newConsigne: string) => {
+    setConsigneConfirm({ parameter, sheet, consigne: newConsigne });
+  };
+
+  const handleConsigneConfirm = (createTemplate: boolean) => {
+    if (!consigneConfirm) return;
+    updateConsigneMutation.mutate({
+      parameter: consigneConfirm.parameter,
+      sheet: consigneConfirm.sheet,
+      consigne: consigneConfirm.consigne,
+      createTemplate,
+    });
+  };
+
   const currentVersionWarnings = useMemo(() => {
     const v = versions.find(v => v.version === effectiveVersion);
     return v?.warnings || generateWarnings;
@@ -495,6 +657,15 @@ export default function FicheProduit2Page() {
 
   return (
     <div className="p-6 space-y-4">
+      {/* ── Dialog confirmation consigne ── */}
+      {consigneConfirm && (
+        <ConsigneConfirmDialog
+          parameter={consigneConfirm.parameter}
+          onConfirm={handleConsigneConfirm}
+          onCancel={() => setConsigneConfirm(null)}
+          isPending={updateConsigneMutation.isPending}
+        />
+      )}
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
@@ -526,7 +697,7 @@ export default function FicheProduit2Page() {
 
       {/* ── Sélection produit + documents ── */}
       <div className="card">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 items-start">
           {/* Produit */}
           <div>
             <label className="block text-xs font-medium text-[#6A6A6A] mb-1.5">Produit</label>
@@ -550,32 +721,29 @@ export default function FicheProduit2Page() {
               ))}
             </select>
           </div>
-
-        </div>
-
-        {/* Documents disponibles */}
-        {selectedProduct && documents.length > 0 && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-[#6A6A6A]">
-                Documents à analyser ({selectedDocIds.size}/{documents.length} sélectionnés)
-              </label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedDocIds(new Set(documents.map(d => d.id)))}
-                  className="text-xs text-[#A100FF] hover:underline"
-                >
-                  Tout sélectionner
-                </button>
-                <button
-                  onClick={() => setSelectedDocIds(new Set())}
-                  className="text-xs text-[#6A6A6A] hover:underline"
-                >
-                  Désélectionner
-                </button>
+          {/* Col 2 : Documents à analyser */}
+          {selectedProduct && documents.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-[#6A6A6A]">
+                  Documents à analyser ({selectedDocIds.size}/{documents.length} sélectionnés)
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedDocIds(new Set(documents.map(d => d.id)))}
+                    className="text-xs text-[#A100FF] hover:underline"
+                  >
+                    Tout sélectionner
+                  </button>
+                  <button
+                    onClick={() => setSelectedDocIds(new Set())}
+                    className="text-xs text-[#6A6A6A] hover:underline"
+                  >
+                    Désélectionner
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+              <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto">
               {documents.map(doc => {
                 const checked = selectedDocIds.has(doc.id);
                 const catLower = (doc.category || "").toLowerCase();
@@ -604,9 +772,13 @@ export default function FicheProduit2Page() {
                   </label>
                 );
               })}
+              </div>
             </div>
+          )}
+        </div>
 
-            <div className="mt-3 flex items-center gap-3 flex-wrap">
+        {selectedProduct && documents.length > 0 && (
+          <div className="mt-3 flex items-center gap-3 flex-wrap border-t border-[#F2F2F2] pt-3">
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-xs text-[#6A6A6A]">Modèle :</span>
                 <select
@@ -633,6 +805,26 @@ export default function FicheProduit2Page() {
                   ))}
                 </select>
               </div>
+              {templateVersions.length > 1 && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs text-[#6A6A6A]">Modèle FPP :</span>
+                  <select
+                    value={selectedTemplateFilename}
+                    onChange={e => setSelectedTemplateFilename(e.target.value)}
+                    disabled={isGenerating}
+                    className="text-xs border border-[#E0E0E0] px-2 py-1 bg-white text-[#3D3D3D] disabled:opacity-50 focus:outline-none focus:border-[#A100FF] max-w-[220px]"
+                    title="Sélectionner la version du template FPP"
+                  >
+                    {templateVersions.map(tv => (
+                      <option key={tv.filename} value={tv.is_current ? "" : tv.filename}>
+                        {tv.is_current
+                          ? `${tv.filename} (actuel)`
+                          : `${tv.filename.replace("FPP_KELIA_Template_Model_", "").replace(".xlsx", "")} — archivé`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <button
                 onClick={handleGenerate}
                 disabled={selectedDocIds.size === 0 || isGenerating}
@@ -720,7 +912,39 @@ export default function FicheProduit2Page() {
                   )}
                 </p>
               )}
-            </div>
+
+              {/* ── Résumé tokens dernière génération ── */}
+              {lastGenerationTokens && !isGenerating && (
+                <div className="flex items-center gap-3 text-xs bg-[#F0FDF4] border border-[#BBF7D0] px-3 py-2 text-[#15803D]">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Génération terminée —{" "}
+                    <span className="font-semibold">{lastGenerationTokens.total.toLocaleString("fr-FR")} tokens</span>
+                    {" "}consommés
+                    <span className="text-[#6A6A6A] ml-2">
+                      (entrée : {lastGenerationTokens.input.toLocaleString("fr-FR")} · sortie : {lastGenerationTokens.output.toLocaleString("fr-FR")})
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              {/* ── Estimation tokens avant génération ── */}
+              {!isGenerating && selectedDocIds.size > 0 && !lastGenerationTokens && (() => {
+                const selDocs = documents.filter(d => selectedDocIds.has(d.id));
+                const totalChars = selDocs.reduce((s, d) => s + ((d.page_count || 0) * 2500), 0);
+                const estTokens = Math.round(totalChars / 3.5);
+                const nbSheets = selectedSheets === "all" ? 4 : 1;
+                const estTotal = estTokens * nbSheets + nbSheets * 8000;
+                if (estTotal === 0) return null;
+                return (
+                  <div className="flex items-center gap-2 text-xs text-[#6A6A6A] bg-[#F9F6FF] border border-[#E0CCFF] px-3 py-1.5">
+                    <Info className="w-3 h-3 shrink-0 text-[#A100FF]" />
+                    Estimation tokens : environ{" "}
+                    <span className="font-semibold text-[#A100FF]">{Math.round(estTotal / 1000)}k–{Math.round(estTotal * 1.5 / 1000)}k tokens</span>
+                    {" "}({nbSheets} onglet{nbSheets > 1 ? "s" : ""} × {selDocs.length} doc{selDocs.length > 1 ? "s" : ""})
+                  </div>
+                );
+              })()}
           </div>
         )}
       </div>
@@ -741,6 +965,7 @@ export default function FicheProduit2Page() {
                   <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Champs</th>
                   <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Renseignés</th>
                   <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Règles extraites</th>
+                  <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Tokens</th>
                   <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Alertes</th>
                   <th className="px-3 py-2" />
                 </tr>
@@ -759,6 +984,14 @@ export default function FicheProduit2Page() {
                     <td className="px-3 py-2 text-center">{v.item_count}</td>
                     <td className="px-3 py-2 text-center text-green-700 font-medium">{v.filled_count}</td>
                     <td className="px-3 py-2 text-center text-[#A100FF]">{v.ref_rules_count}</td>
+                    <td className="px-3 py-2 text-center">
+                      {v.tokens_total != null ? (
+                        <span className="text-xs" title={`Entrée: ${v.tokens_input?.toLocaleString("fr-FR")} | Sortie: ${v.tokens_output?.toLocaleString("fr-FR")}`}>
+                          <span className="font-medium text-[#3D3D3D]">{Math.round(v.tokens_total / 1000)}k</span>
+                          <span className="text-[#9A9A9A] ml-0.5">tok</span>
+                        </span>
+                      ) : <span className="text-[#BDBDBD] text-xs">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-center">
                       {v.warnings.filter(w => w.severity === "critique").length > 0 ? (
                         <span className="text-xs text-[#FF3333] font-medium">
@@ -793,19 +1026,25 @@ export default function FicheProduit2Page() {
           <div className="flex items-center gap-3 px-4 py-2 border-b border-[#E0E0E0] bg-[#FAFAFA] flex-wrap">
             <Filter className="w-3.5 h-3.5 text-[#6A6A6A] shrink-0" />
             <span className="text-xs text-[#6A6A6A] shrink-0">Statut :</span>
-            {["", "A verifier", "Sources contradictoires", "Information manquante", "genere", "a_arbitrer", "valide_metier", "voir_kapia"].map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={`text-xs px-2 py-0.5 transition-colors shrink-0 ${
-                  filterStatus === s
-                    ? "bg-[#A100FF] text-white"
-                    : "bg-[#F2F2F2] text-[#6A6A6A] hover:bg-[#E0E0E0]"
-                }`}
-              >
-                {s === "" ? "Tous" : STATUS_CONFIG[s]?.label || USER_STATUS_CFG[s]?.label || s}
-              </button>
-            ))}
+            {["", "genere", "a_arbitrer", "valide_metier", "voir_kapia", "A verifier", "Sources contradictoires", "Information manquante"].map(s => {
+              const cfg = USER_STATUS_CFG[s] ?? null;
+              const isActive = filterStatus === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setFilterStatus(s)}
+                  className={`text-[10px] px-2.5 py-0.5 rounded-full border transition-all shrink-0 font-medium ${
+                    s === ""
+                      ? isActive ? "bg-[#A100FF] text-white border-[#A100FF]" : "bg-[#F3F4F6] text-[#6B7280] border-[#D1D5DB] hover:bg-[#E5E7EB]"
+                      : cfg
+                      ? isActive ? cfg.activeCls : cfg.inactiveCls
+                      : isActive ? "bg-red-500 text-white border-red-500" : "bg-red-50 text-red-500 border-red-200 hover:bg-red-100"
+                  }`}
+                >
+                  {s === "" ? "Tous" : cfg?.label ?? (STATUS_CONFIG[s]?.label || s)}
+                </button>
+              );
+            })}
             {sourceDocuments.length > 0 && (
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-[#D0D0D0]">|</span>
@@ -936,9 +1175,9 @@ export default function FicheProduit2Page() {
                           }}
                         />
                       </th>
-                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-40">Paramètre KELIA</th>
-                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-64">Valeur à renseigner</th>
-                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-56">Commentaire</th>
+                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-40">Paramètre</th>
+                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-64">Valeur détectée</th>
+                      <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] w-56">Valeur finale</th>
                       <th className="text-left px-3 py-2 font-medium text-[#6A6A6A] whitespace-nowrap">Statut</th>
                     </tr>
                   </thead>
@@ -956,8 +1195,8 @@ export default function FicheProduit2Page() {
                       const displayStatus = patched.user_status !== undefined ? patched.user_status : item.user_status;
                       const isEditing = editingId === item.id;
                       return (
-                            <tr
-                              key={item.id}
+                            <React.Fragment key={item.id}>
+                              <tr
                               className={
                                 isContra
                                   ? "bg-red-50 border-l-2 border-l-[#FF3333]"
@@ -1007,11 +1246,53 @@ export default function FicheProduit2Page() {
                                       </>
                                     )}
                                   </div>
-                                  {!isNoValue && <JustificatifsPanel item={item} show={showJustifs} productId={selectedProduct!}
-                                    history={historyCache[item.id]} />}
+                                  {/* Source document — toujours visible */}
+                                  {!isNoValue && (() => {
+                                    type SrcEntry = { doc?: string; page?: number | null };
+                                    let entries: SrcEntry[] = [];
+                                    // 1. sources_json (champ dédié fiche2)
+                                    if (item.sources_json) {
+                                      try {
+                                        const parsed = JSON.parse(item.sources_json);
+                                        if (Array.isArray(parsed)) entries = parsed;
+                                      } catch { /* ignore */ }
+                                    }
+                                    // 2. source_paragraph JSON
+                                    if (entries.length === 0 && item.source_paragraph?.trimStart().startsWith("[")) {
+                                      try {
+                                        const parsed = JSON.parse(item.source_paragraph);
+                                        if (Array.isArray(parsed)) entries = parsed;
+                                      } catch { /* ignore */ }
+                                    }
+                                    // 3. source_paragraph "Doc — texte"
+                                    if (entries.length === 0 && item.source_paragraph) {
+                                      const dashIdx = item.source_paragraph.indexOf(" — ");
+                                      if (dashIdx > -1) {
+                                        entries = [{ doc: item.source_paragraph.slice(0, dashIdx), page: item.source_page }];
+                                      } else {
+                                        // source_paragraph est directement le nom du fichier
+                                        entries = [{ doc: item.source_paragraph, page: item.source_page }];
+                                      }
+                                    }
+                                    // 4. Fallback page seule
+                                    if (entries.length === 0 && item.source_page) {
+                                      entries = [{ doc: "Source", page: item.source_page }];
+                                    }
+                                    if (entries.length === 0) return null;
+                                    return (
+                                      <div className="flex flex-wrap gap-1 mt-0.5">
+                                        {entries.map((e, i) => e.doc ? (
+                                          <span key={i} className="inline-flex items-center gap-1 text-[9px] text-[#A100FF] bg-[#F3E0FF] px-1.5 py-0.5 rounded font-medium max-w-[200px]" title={e.doc}>
+                                            <FileText className="w-2.5 h-2.5 shrink-0" />
+                                            <span className="truncate">{e.doc}{(e.page ?? item.source_page) ? ` p.${e.page ?? item.source_page}` : ""}</span>
+                                          </span>
+                                        ) : null)}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </td>
-                              {/* Correction */}
+                              {/* Valeur finale */}
                               <td className="px-3 py-2 align-top w-52">
                                 {isEditing ? (
                                   <div className="flex flex-col gap-1.5">
@@ -1040,23 +1321,53 @@ export default function FicheProduit2Page() {
                                       </button>
                                     </div>
                                   </div>
-                                ) : (
+                                ) : displayValue ? (
                                   <div className="flex flex-col gap-0.5 group cursor-pointer" onClick={() => startEdit(item)}>
-                                    {displayValue ? (
-                                      <span className="text-sm font-medium text-[#A100FF]">{displayValue}</span>
-                                    ) : (
-                                      <span className="text-xs text-[#BDBDBD] italic group-hover:text-[#A100FF] transition-colors">
-                                        Cliquer pour corriger…
-                                      </span>
-                                    )}
+                                    <span className="text-sm font-medium text-[#A100FF]">{displayValue}</span>
                                     {displayComment && <span className="text-[11px] text-[#6A6A6A] italic">{displayComment}</span>}
                                     <Pencil className="w-3 h-3 text-[#BDBDBD] group-hover:text-[#A100FF] transition-colors mt-0.5" />
+                                  </div>
+                                ) : isNoValue ? (
+                                  <span className="text-xs text-[#BDBDBD] italic">Non renseigné</span>
+                                ) : item.confidence_pct === 100 ? (
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-sm text-[#15803D] font-medium">{item.value}</span>
+                                    <span className="text-[10px] text-[#15803D] bg-green-50 px-1.5 py-0.5 rounded w-fit">IA certaine (100%)</span>
+                                    <button onClick={() => startEdit(item)} className="text-[10px] text-[#BDBDBD] hover:text-[#A100FF] text-left transition-colors">
+                                      Modifier…
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      onClick={() => {
+                                        patchMutation.mutate({ itemId: item.id, body: { user_value: item.value, user_status: "valide_metier" } });
+                                        if (item.status === "Sources contradictoires") {
+                                          const sibling = allItems.find(i => i.id !== item.id && i.parameter === item.parameter && i.status === "Sources contradictoires");
+                                          if (sibling) {
+                                            const siblingStatus = localPatches[sibling.id]?.user_status ?? sibling.user_status;
+                                            if (siblingStatus !== "valide_metier") {
+                                              patchMutation.mutate({ itemId: sibling.id, body: { user_status: "voir_kapia" } });
+                                            }
+                                          }
+                                        }
+                                      }}
+                                      className="text-[10px] text-left px-2 py-1 border border-[#E0E0E0] hover:border-[#15803D] hover:bg-green-50 text-[#6A6A6A] hover:text-[#15803D] transition-colors rounded"
+                                    >
+                                      ✓ Garder la valeur détectée
+                                    </button>
+                                    <button
+                                      onClick={() => startEdit(item)}
+                                      className="text-[10px] text-left px-2 py-1 border border-[#E0E0E0] hover:border-[#A100FF] hover:bg-[#F3E0FF] text-[#6A6A6A] hover:text-[#A100FF] transition-colors rounded flex items-center gap-1"
+                                    >
+                                      <Pencil className="w-2.5 h-2.5 shrink-0" /> Modifier la valeur
+                                    </button>
                                   </div>
                                 )}
                               </td>
                               {/* Statut — 4 boutons style 3, une ligne */}
                               <td className="px-2 py-2 align-top">
-                                <div className="flex gap-1 flex-nowrap">
+                                <div className="flex gap-0.5 flex-nowrap justify-end">
                                   {STATUS_BTNS.map(s => {
                                     const cur = displayStatus ?? "genere";
                                     const isActive = cur === s.key || (s.key === "a_arbitrer_mh" && cur === "a_arbitrer");
@@ -1076,7 +1387,7 @@ export default function FicheProduit2Page() {
                                       <button
                                         key={s.key}
                                         onClick={() => patchMutation.mutate({ itemId: item.id, body: { user_status: s.key } })}
-                                        className={`text-[10px] px-2 py-0.5 rounded-full transition-all duration-150 whitespace-nowrap font-normal ${
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-full transition-all duration-150 whitespace-nowrap font-normal ${
                                           isActive ? activeCls[s.key] : inactiveCls[s.key]
                                         }`}
                                       >
@@ -1087,6 +1398,15 @@ export default function FicheProduit2Page() {
                                 </div>
                               </td>
                             </tr>
+                            {showJustifs && !isNoValue && (
+                              <tr key={`justif-${item.id}`} className="bg-[#FAF8FF]">
+                                <td />
+                                <td colSpan={4} className="px-3 pb-2">
+                                  <JustificatifsPanel item={item} show={true} productId={selectedProduct!} history={historyCache[item.id]} onConsigneSave={handleConsigneSave} />
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           );
                     })}
                   </tbody>

@@ -345,6 +345,16 @@ export interface FicheDirectVersion {
   document_ids: number[];
   warnings: DocWarning[];
   ref_rules_count: number;
+  tokens_input?: number | null;
+  tokens_output?: number | null;
+  tokens_total?: number | null;
+}
+
+export interface TemplateVersion {
+  filename: string;
+  size_bytes: number;
+  modified_at: string;
+  is_current: boolean;
 }
 
 export interface FicheDirectExtractResult {
@@ -354,7 +364,13 @@ export interface FicheDirectExtractResult {
 }
 
 export const ficheDirectApi = {
-  generate: (product_id: number, document_ids: number[], provider: string = "anthropic", sheets?: string[]) =>
+  generate: (
+    product_id: number,
+    document_ids: number[],
+    provider: string = "anthropic",
+    sheets?: string[],
+    template_filename?: string,
+  ) =>
     apiLong.post<{
       count: number;
       filled_count: number;
@@ -362,7 +378,15 @@ export const ficheDirectApi = {
       avg_confidence_pct: number | null;
       message: string;
       warnings: DocWarning[];
-    }>(`/fiche2/${product_id}/generate`, { document_ids, provider, sheets: sheets ?? null }),
+      tokens_input?: number;
+      tokens_output?: number;
+      tokens_total?: number;
+    }>(`/fiche2/${product_id}/generate`, {
+      document_ids,
+      provider,
+      sheets: sheets ?? null,
+      template_filename: template_filename ?? null,
+    }),
   checkDocuments: (product_id: number, document_ids: number[]) =>
     api.get<{ documents: { id: number; name: string; type: string }[]; warnings: DocWarning[] }>(
       `/fiche2/${product_id}/check-documents`,
@@ -398,6 +422,15 @@ export const ficheDirectApi = {
     api.post(`/fiche2/${product_id}/items/bulk-validate`, { item_ids, user_status }),
   itemHistory: (product_id: number, item_id: number) =>
     api.get<FicheItemHistoryEntry[]>(`/fiche2/${product_id}/item/${item_id}/history`),
+  templateVersions: () =>
+    api.get<TemplateVersion[]>("/fiche2/template/versions"),
+  updateConsigne: (parameter: string, sheet: string, consigne: string, create_template: boolean) =>
+    api.patch<{ updated_items: number; template_version: string | null }>("/fiche2/template/consigne", {
+      parameter,
+      sheet,
+      consigne,
+      create_template,
+    }),
 };
 
 // ── Recette Paramétrage ───────────────────────────────────────────────────────

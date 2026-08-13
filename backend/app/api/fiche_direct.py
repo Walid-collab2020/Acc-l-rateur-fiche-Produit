@@ -20,6 +20,9 @@ from app.services.fiche_direct_service import (
     fill_fiche_from_extracted,
     export_fiche_direct_excel,
     check_missing_document_types,
+    list_template_versions,
+    update_consigne_in_template,
+    _get_tokens,
 )
 from app.models.fiche_direct import FicheExtraInfo, FicheItemHistory
 from app.services.ai_service import set_active_provider
@@ -32,6 +35,14 @@ class GenerateDirectRequest(BaseModel):
     document_ids: List[int]
     provider: str = "openai"
     sheets: Optional[List[str]] = None  # None = tous les onglets
+    template_filename: Optional[str] = None  # None = template principal
+
+
+class UpdateConsigneBody(BaseModel):
+    parameter: str
+    sheet: str
+    consigne: str
+    create_template: bool = True
 
 
 class FillFromExtractionRequest(BaseModel):
@@ -85,18 +96,73 @@ class BulkValidateBody(BaseModel):
     user_status: str = "valide_metier"
 
 
+@router.get("/template/versions")
+def get_template_versions():
+    """Liste les versions du template Excel FPP disponibles dans le dossier generique."""
+    return list_template_versions()
+
+
+@router.patch("/template/consigne")
+def update_consigne(body: UpdateConsigneBody, db: Session = Depends(get_db)):
+    """
+    Met à jour globalement la consigne de saisie d'un paramètre (tous produits, toutes versions).
+    Si create_template=true : archive le template actuel et met à jour le fichier principal.
+    """
+    updated_items = db.query(FicheDirectItem).filter(
+        FicheDirectItem.parameter == body.parameter,
+        FicheDirectItem.sheet == body.sheet,
+    ).all()
+    for item in updated_items:
+        item.valeurs_possibles = body.consigne
+    db.commit()
+
+    template_version: Optional[str] = None
+    if body.create_template:
+        try:
+            # Collecte TOUTES les consignes actuelles en base (pas seulement la courante)
+            # afin que le nouveau template reflète l'ensemble des modifications accumulées.
+            from sqlalchemy import tuple_ as sa_tuple
+            rows = (
+                db.query(
+                    FicheDirectItem.sheet,
+                    FicheDirectItem.parameter,
+                    FicheDirectItem.valeurs_possibles,
+                )
+                .filter(
+                    FicheDirectItem.valeurs_possibles.isnot(None),
+                    FicheDirectItem.valeurs_possibles != "",
+                )
+                .distinct(FicheDirectItem.sheet, FicheDirectItem.parameter)
+                .all()
+            )
+            all_consignes = [
+                {"sheet": r.sheet, "parameter": r.parameter, "consigne": r.valeurs_possibles}
+                for r in rows
+            ]
+            template_version = update_consigne_in_template(all_consignes)
+        except Exception as e:
+            logger.error(f"[consigne] Erreur mise à jour template : {e}")
+            raise HTTPException(status_code=500, detail=f"Erreur mise à jour template : {e}")
+
+    return {
+        "updated_items": len(updated_items),
+        "template_version": template_version,
+    }
+
+
 @router.post("/{product_id}/generate")
 def generate(product_id: int, body: GenerateDirectRequest, db: Session = Depends(get_db)):
     """Génère la FPP complète — 4 appels LLM parallèles, prompt expert Actuaire/MOA."""
     try:
         set_active_provider(body.provider)
-        items, warnings = analyze_and_fill_fpp(db, product_id, body.document_ids, body.sheets)
+        items, warnings = analyze_and_fill_fpp(db, product_id, body.document_ids, body.sheets, body.template_filename)
         filled = sum(1 for i in items if i.value and i.value not in ("Information manquante", "Aucune regle mentionnee dans les documents analyses"))
         conflict_count = sum(1 for i in items if i.conflict)
         avg_confidence = (
             sum(i.confidence_pct for i in items if i.confidence_pct is not None)
             // max(1, sum(1 for i in items if i.confidence_pct is not None))
         ) if any(i.confidence_pct is not None for i in items) else None
+        token_stats = _get_tokens()
         return {
             "message": f"{filled}/{len(items)} champs renseignés",
             "count": len(items),
@@ -104,6 +170,7 @@ def generate(product_id: int, body: GenerateDirectRequest, db: Session = Depends
             "conflict_count": conflict_count,
             "avg_confidence_pct": avg_confidence,
             "warnings": warnings,
+            **token_stats,
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -222,6 +289,9 @@ def list_versions(product_id: int, db: Session = Depends(get_db)):
             "document_ids": doc_ids,
             "warnings": snapshot.get("warnings", []),
             "ref_rules_count": snapshot.get("ref_rules_count", 0),
+            "tokens_input": snapshot.get("tokens_input"),
+            "tokens_output": snapshot.get("tokens_output"),
+            "tokens_total": snapshot.get("tokens_total"),
         })
     return result
 

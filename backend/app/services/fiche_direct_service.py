@@ -14,8 +14,25 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+import threading
 import anthropic
 from openai import OpenAI
+
+# ── Accumulateur de tokens (thread-local, réinitialisé à chaque génération) ───
+_token_acc = threading.local()
+
+def _reset_tokens():
+    _token_acc.input = 0
+    _token_acc.output = 0
+
+def _add_tokens(inp: int, out: int):
+    _token_acc.input = getattr(_token_acc, "input", 0) + inp
+    _token_acc.output = getattr(_token_acc, "output", 0) + out
+
+def _get_tokens() -> dict:
+    inp = getattr(_token_acc, "input", 0)
+    out = getattr(_token_acc, "output", 0)
+    return {"tokens_input": inp, "tokens_output": out, "tokens_total": inp + out}
 
 from app.config import settings
 from app.models.fiche_direct import FicheDirectItem, FicheExtraInfo
@@ -317,12 +334,80 @@ def check_missing_document_types(documents: list[Document]) -> list[dict]:
 # Lecture du template FPP
 # ---------------------------------------------------------------------------
 
-def _read_template_sheets() -> dict[str, str]:
-    """Lit le template Excel et retourne {sheet_name: texte_formaté_pour_prompt}."""
+def _get_template_path(template_filename: str | None = None) -> Path:
+    """Retourne le chemin du template à utiliser (principal ou version archivée)."""
+    if template_filename:
+        candidate = TEMPLATE_PATH.parent / template_filename
+        if candidate.exists():
+            return candidate
+    return TEMPLATE_PATH
+
+
+def list_template_versions() -> list[dict]:
+    """Liste tous les fichiers template Excel disponibles dans le dossier generique."""
+    generique_dir = TEMPLATE_PATH.parent
+    if not generique_dir.exists():
+        return []
+    files = sorted(
+        generique_dir.glob("FPP_KELIA_Template_Model*.xlsx"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    return [
+        {
+            "filename": f.name,
+            "size_bytes": f.stat().st_size,
+            "modified_at": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            "is_current": f.name == TEMPLATE_PATH.name,
+        }
+        for f in files
+    ]
+
+
+def update_consigne_in_template(all_consignes: list[dict]) -> str:
+    """
+    Archive le template actuel puis applique TOUTES les consignes fournies.
+    all_consignes : [{sheet, parameter, consigne}, ...]
+    Retourne le nom du fichier archivé.
+    """
     if not TEMPLATE_PATH.exists():
         raise ValueError(f"Template FPP introuvable : {TEMPLATE_PATH}")
 
-    wb = openpyxl.load_workbook(str(TEMPLATE_PATH), data_only=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_name = f"FPP_KELIA_Template_Model_{timestamp}.xlsx"
+    archive_path = TEMPLATE_PATH.parent / archive_name
+    shutil.copy2(str(TEMPLATE_PATH), str(archive_path))
+
+    # Index (sheet, parameter) → consigne pour recherche rapide
+    index: dict[tuple[str, str], str] = {
+        (c["sheet"], c["parameter"]): c["consigne"]
+        for c in all_consignes
+    }
+
+    wb = openpyxl.load_workbook(str(TEMPLATE_PATH))
+    updated = 0
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(min_row=5):
+            param_val = str(row[0].value or "").strip()
+            if not param_val or param_val == "None":
+                continue
+            key = (sheet_name, param_val)
+            if key in index and len(row) > 2:
+                row[2].value = index[key]
+                updated += 1
+    wb.save(str(TEMPLATE_PATH))
+    logger.info(f"[consigne] Archivé {archive_name}, {updated} consigne(s) mises à jour dans le template")
+    return archive_name
+
+
+def _read_template_sheets(template_filename: str | None = None) -> dict[str, str]:
+    """Lit le template Excel et retourne {sheet_name: texte_formaté_pour_prompt}."""
+    tpl_path = _get_template_path(template_filename)
+    if not tpl_path.exists():
+        raise ValueError(f"Template FPP introuvable : {tpl_path}")
+
+    wb = openpyxl.load_workbook(str(tpl_path), data_only=True)
     result: dict[str, str] = {}
 
     for sheet_name in SHEETS_TO_PROCESS:
@@ -356,12 +441,13 @@ def _read_template_sheets() -> dict[str, str]:
     return result
 
 
-def _read_template_item_list() -> dict[str, list[dict]]:
+def _read_template_item_list(template_filename: str | None = None) -> dict[str, list[dict]]:
     """Retourne {sheet_name: [{parameter, valeurs_possibles, kelia_comment, section}]}."""
-    if not TEMPLATE_PATH.exists():
-        raise ValueError(f"Template FPP introuvable : {TEMPLATE_PATH}")
+    tpl_path = _get_template_path(template_filename)
+    if not tpl_path.exists():
+        raise ValueError(f"Template FPP introuvable : {tpl_path}")
 
-    wb = openpyxl.load_workbook(str(TEMPLATE_PATH), data_only=True)
+    wb = openpyxl.load_workbook(str(tpl_path), data_only=True)
     result: dict[str, list[dict]] = {}
     current_section = ""
 
@@ -422,7 +508,7 @@ def _build_documents_context(documents: list[Document]) -> str:
 # ---------------------------------------------------------------------------
 
 def _call_llm(system: str, user: str, max_tokens: int = 16000) -> str:
-    """Appel LLM vers le provider actif avec system + user prompt."""
+    """Appel LLM vers le provider actif avec system + user prompt. Accumule les tokens utilisés."""
     provider = get_active_provider()
 
     if provider == "anthropic":
@@ -433,6 +519,8 @@ def _call_llm(system: str, user: str, max_tokens: int = 16000) -> str:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        if resp.usage:
+            _add_tokens(resp.usage.input_tokens, resp.usage.output_tokens)
         return resp.content[0].text.strip()
     else:
         client = OpenAI(api_key=settings.openai_api_key or None)
@@ -446,6 +534,8 @@ def _call_llm(system: str, user: str, max_tokens: int = 16000) -> str:
             temperature=0,
             response_format={"type": "json_object"},
         )
+        if resp.usage:
+            _add_tokens(resp.usage.prompt_tokens, resp.usage.completion_tokens)
         return resp.choices[0].message.content.strip()
 
 
@@ -991,14 +1081,17 @@ def analyze_and_fill_fpp(
     product_id: int,
     document_ids: list[int],
     sheets_to_process: list[str] | None = None,
+    template_filename: str | None = None,
 ) -> tuple[list[FicheDirectItem], list[dict]]:
     """
     Moteur FPP : appels LLM séquentiels (un par onglet) pour fiabilité maximale.
     sheets_to_process : liste des onglets à traiter (None = les 4 par défaut).
+    template_filename : nom du fichier template à utiliser (None = template principal).
     Retourne (items, warnings).
     """
-    if not TEMPLATE_PATH.exists():
-        raise ValueError(f"Template FPP introuvable : {TEMPLATE_PATH}")
+    tpl_path = _get_template_path(template_filename)
+    if not tpl_path.exists():
+        raise ValueError(f"Template FPP introuvable : {tpl_path}")
 
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
@@ -1008,12 +1101,15 @@ def analyze_and_fill_fpp(
     if not documents:
         raise ValueError("Aucun document valide trouvé.")
 
+    # Réinitialise le compteur de tokens pour cette génération
+    _reset_tokens()
+
     # Vérification documents manquants
     warnings = check_missing_document_types(documents)
 
     # Lecture template + documents
-    template_sheets_text = _read_template_sheets()
-    template_items = _read_template_item_list()
+    template_sheets_text = _read_template_sheets(template_filename)
+    template_items = _read_template_item_list(template_filename)
     docs_context = _build_documents_context(documents)
 
     if not docs_context.strip():
@@ -1094,6 +1190,7 @@ def analyze_and_fill_fpp(
         if r.get("product_understanding") and isinstance(r.get("product_understanding"), (str, int, float))
     )[:2000]
 
+    token_stats = _get_tokens()
     product.status_fiche = ProductStatus.GENERATED
     fiche_version = Version(
         product_id=product_id,
@@ -1110,6 +1207,7 @@ def analyze_and_fill_fpp(
                 for name, r in sheet_results.items()
                 if r.get("error")
             },
+            **token_stats,
         },
     )
     db.add(fiche_version)

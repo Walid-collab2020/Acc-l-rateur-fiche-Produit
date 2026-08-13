@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { reportingApi } from "@/lib/api";
 import { CheckCircle, XCircle, FileText, BarChart3 } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
+  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
 // ── Pill statut ──
@@ -83,28 +83,8 @@ export default function ReportingPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-black">Reporting</h1>
-        <p className="text-xs text-[#6A6A6A] mt-0.5">Avancement et qualité des migrations produit.</p>
+        <p className="text-xs text-[#6A6A6A] mt-0.5">Etat d&apos;avancement de la production des fiches produits</p>
       </div>
-
-      {/* KPIs */}
-      {portfolio && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="card text-center py-5">
-            <p className="text-xs text-[#6A6A6A] mb-1">Total produits</p>
-            <p className="text-3xl font-bold text-black">{portfolio.kpis.total_products}</p>
-          </div>
-          <div className="card text-center py-5">
-            <p className="text-xs text-[#6A6A6A] mb-1">Fiches validées</p>
-            <p className="text-3xl font-bold text-[#15803D]">{portfolio.kpis.products_validated_fiche}</p>
-            <p className="text-[10px] text-[#9A9A9A] mt-0.5">sur {portfolio.kpis.total_products}</p>
-          </div>
-          <div className="card text-center py-5">
-            <p className="text-xs text-[#6A6A6A] mb-1">Paramétrage validé</p>
-            <p className="text-3xl font-bold text-[#1D4ED8]">{portfolio.kpis.products_validated_parametrage}</p>
-            <p className="text-[10px] text-[#9A9A9A] mt-0.5">sur {portfolio.kpis.total_products}</p>
-          </div>
-        </div>
-      )}
 
       {/* ── Documents par produit ── */}
       <div className="card">
@@ -112,34 +92,6 @@ export default function ReportingPage() {
           <FileText className="w-4 h-4 text-[#A100FF]" />
           <h2 className="font-semibold text-black text-sm">Documents par produit</h2>
         </div>
-
-        {/* Jauge % par type de document */}
-        {totalProducts > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-5">
-            {docSummary.map(d => (
-              <div key={d.key} className="border border-[#E0E0E0] px-4 py-3 rounded-lg bg-[#FAFAFA]">
-                <p className="text-[11px] font-medium text-[#6A6A6A] mb-2 truncate" title={d.label}>{d.label}</p>
-                <p className="text-2xl font-bold text-black leading-none">
-                  {d.present}<span className="text-sm font-normal text-[#9A9A9A]">/{d.total}</span>
-                </p>
-                <div className="mt-2 h-1.5 bg-[#E5E7EB] rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${d.pct}%`, backgroundColor: d.color }} />
-                </div>
-                <p className="text-[11px] font-semibold text-right mt-1" style={{ color: d.color }}>{d.pct}%</p>
-              </div>
-            ))}
-            <div className="border border-[#E0E0E0] px-4 py-3 rounded-lg bg-[#FAFAFA]">
-              <p className="text-[11px] font-medium text-[#6A6A6A] mb-2">Fiche Produit générée</p>
-              <p className="text-2xl font-bold text-black leading-none">
-                {fichePresentCount}<span className="text-sm font-normal text-[#9A9A9A]">/{totalProducts}</span>
-              </p>
-              <div className="mt-2 h-1.5 bg-[#E5E7EB] rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all bg-[#A100FF]" style={{ width: `${fichePct}%` }} />
-              </div>
-              <p className="text-[11px] font-semibold text-right mt-1 text-[#A100FF]">{fichePct}%</p>
-            </div>
-          </div>
-        )}
 
         {loadingDocs ? (
           <div className="text-center py-6 text-[#6A6A6A] text-sm">Chargement…</div>
@@ -156,6 +108,31 @@ export default function ReportingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F2F2F2]">
+                <tr className="bg-[#FAFAFA] border-b border-[#F0F0F0]">
+                  <td className="px-3 py-1.5 text-[11px] text-[#9A9A9A] font-medium">Couverture globale</td>
+                  {docSummary.map(d => (
+                    <td key={d.key} className="px-3 py-1.5 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[11px] text-[#6A6A6A]">
+                          <span className="font-semibold text-black">{d.present}</span>/{d.total}
+                        </span>
+                        <div className="w-16 h-1 bg-[#E5E7EB] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${d.pct}%`, backgroundColor: d.color }} />
+                        </div>
+                      </div>
+                    </td>
+                  ))}
+                  <td className="px-3 py-1.5 text-center">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="text-[11px] text-[#6A6A6A]">
+                        <span className="font-semibold text-black">{fichePresentCount}</span>/{totalProducts}
+                      </span>
+                      <div className="w-16 h-1 bg-[#E5E7EB] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-[#A100FF] transition-all" style={{ width: `${fichePct}%` }} />
+                      </div>
+                    </div>
+                  </td>
+                </tr>
                 {(docCoverage as any[]).map((p: any) => {
                   const available: string[] = p.available_categories || [];
                   const ficheRow = (ficheStats as any[]).find((f: any) => f.product_id === p.product_id);
@@ -203,20 +180,27 @@ export default function ReportingPage() {
             </select>
           </div>
 
-          {/* Graphique 4 barres */}
-          <div className="mb-5">
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={ficheBarData} barSize={48} margin={{ top: 16, right: 24, left: -10, bottom: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 500 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: "#F9FAFB" }} />
-                <Bar dataKey="count" name="Champs" radius={[6, 6, 0, 0]}>
-                  {ficheBarData.map((d, i) => (
+          {/* Graphique camembert */}
+          <div className="mb-5 flex justify-center">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={ficheBarData.filter(d => d.count > 0)}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={({ name, value, percent }: { name: string; value: number; percent: number }) => `${name}: ${value} (${(percent * 100).toFixed(0)}%)`}
+                  labelLine={true}
+                >
+                  {ficheBarData.filter(d => d.count > 0).map((d, i) => (
                     <Cell key={i} fill={d.color} />
                   ))}
-                  <LabelList dataKey="count" position="top" style={{ fontSize: 12, fontWeight: 700, fill: "#374151" }} />
-                </Bar>
-              </BarChart>
+                </Pie>
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(value: number | string) => [`${value} champs`, ""]} />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
 
@@ -240,6 +224,7 @@ export default function ReportingPage() {
                   <th className="text-center px-3 py-2">
                     <StatPill {...SC.valide_metier} />
                   </th>
+                  <th className="text-center px-3 py-2 font-medium text-[#6A6A6A]">Tokens génération</th>
                   <th className="text-right px-3 py-2 font-medium text-[#6A6A6A]">% Validé</th>
                 </tr>
               </thead>
@@ -260,6 +245,14 @@ export default function ReportingPage() {
                       <td className="px-3 py-2.5 text-center font-semibold text-[#EA580C]">{f.a_arbitrer_mh ?? 0}</td>
                       <td className="px-3 py-2.5 text-center font-semibold text-[#1D4ED8]">{f.voir_kapia ?? 0}</td>
                       <td className="px-3 py-2.5 text-center font-semibold text-[#15803D]">{f.valide_metier ?? 0}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        {f.tokens_total != null ? (
+                          <span className="text-xs" title={`Entrée: ${(f.tokens_input ?? 0).toLocaleString("fr-FR")} tok | Sortie: ${(f.tokens_output ?? 0).toLocaleString("fr-FR")} tok`}>
+                            <span className="font-semibold text-[#3D3D3D]">{Math.round(f.tokens_total / 1000)}k</span>
+                            <span className="text-[#9A9A9A] ml-0.5 text-[11px]"> tok</span>
+                          </span>
+                        ) : <span className="text-[#BDBDBD] text-xs">—</span>}
+                      </td>
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <div className="w-20 h-2 bg-[#E5E7EB] overflow-hidden rounded-full">

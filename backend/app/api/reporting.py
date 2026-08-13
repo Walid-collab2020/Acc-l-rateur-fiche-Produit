@@ -162,6 +162,17 @@ def fiche_stats(db: Session = Depends(get_db)):
             .filter(FicheDirectItem.product_id == p.id, FicheDirectItem.version_number == latest_version)
             .all()
         )
+        from app.models.version import Version as VersionModel
+        ver_obj = (
+            db.query(VersionModel)
+            .filter(
+                VersionModel.product_id == p.id,
+                VersionModel.artifact_type == "FicheDirect",
+                VersionModel.version_number == latest_version,
+            )
+            .first()
+        )
+        snap = (ver_obj.snapshot or {}) if ver_obj else {}
         total = len(items)
         result.append({
             "product_id": p.id, "boss_number": p.boss_number, "name": p.name or "",
@@ -173,6 +184,9 @@ def fiche_stats(db: Session = Depends(get_db)):
             "valide_metier": sum(1 for i in items if i.user_status == "valide_metier"),
             "voir_kapia": sum(1 for i in items if i.user_status == "voir_kapia"),
             "fiche_generated": total > 0,
+            "tokens_input": snap.get("tokens_input"),
+            "tokens_output": snap.get("tokens_output"),
+            "tokens_total": snap.get("tokens_total"),
         })
     return result
 
