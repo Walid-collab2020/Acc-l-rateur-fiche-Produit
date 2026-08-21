@@ -196,8 +196,19 @@ export interface SyncResult {
   errors: string[];
 }
 
+export interface StoragePathInfo {
+  storage_dir: string;
+  documents_dir: string;
+  is_custom: boolean;
+}
+
 export const syncApi = {
   scan: () => api.post<SyncResult>("/sync/scan"),
+  getStoragePath: () => api.get<StoragePathInfo>("/sync/storage-path"),
+  setStoragePath: (storage_dir: string) =>
+    api.post<StoragePathInfo>("/sync/storage-path", { storage_dir }),
+  resetStoragePath: () => api.delete<StoragePathInfo>("/sync/storage-path"),
+  browseFolder: () => api.get<{ path: string | null }>("/sync/browse-folder"),
 };
 
 export interface ChatMessage {

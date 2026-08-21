@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_EXTENSIONS = document_service.ALLOWED_EXTENSIONS
 
 
-def scan_folders(db: Session) -> dict:
+def scan_folders(db: Session, custom_documents_dir: str | None = None) -> dict:
     """
     Scan storage/documents folders and sync with the database.
     - Creates products from produits/ subfolders (boss_number = folder name)
@@ -23,8 +23,9 @@ def scan_folders(db: Session) -> dict:
     - Creates Output/ subfolders automatically
     - Generates referentiel Markdown for products with new documents
     """
-    produits_dir = Path(settings.documents_dir) / "produits"
-    generique_dir = Path(settings.documents_dir) / "generique"
+    documents_dir = custom_documents_dir or settings.documents_dir
+    produits_dir = Path(documents_dir) / "produits"
+    generique_dir = Path(documents_dir) / "generique"
 
     produits_dir.mkdir(parents=True, exist_ok=True)
     generique_dir.mkdir(parents=True, exist_ok=True)

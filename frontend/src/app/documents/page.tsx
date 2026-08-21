@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
 import { DocumentList } from "@/components/documents/DocumentList";
 import { productsApi, syncApi, SyncResult } from "@/lib/api";
-import { RefreshCw, Library, CheckCircle, AlertCircle, FolderOpen } from "lucide-react";
+import { RefreshCw, Library, CheckCircle, AlertCircle, FolderOpen, Pencil, X, Save, RotateCcw, FolderSearch } from "lucide-react";
 
 type Tab = "generique" | "produit";
 
@@ -12,12 +12,43 @@ export default function DocumentsPage() {
   const [tab, setTab] = useState<Tab>("produit");
   const [selectedProduct, setSelectedProduct] = useState<number | undefined>();
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [editingPath, setEditingPath] = useState(false);
+  const [pathInput, setPathInput] = useState("");
   const queryClient = useQueryClient();
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: () => productsApi.list().then((r) => r.data),
   });
+
+  const { data: pathInfo, refetch: refetchPath } = useQuery({
+    queryKey: ["sync-storage-path"],
+    queryFn: () => syncApi.getStoragePath().then((r) => r.data),
+  });
+
+  const setPathMutation = useMutation({
+    mutationFn: (dir: string) => syncApi.setStoragePath(dir).then((r) => r.data),
+    onSuccess: () => {
+      refetchPath();
+      setEditingPath(false);
+    },
+  });
+
+  const resetPathMutation = useMutation({
+    mutationFn: () => syncApi.resetStoragePath().then((r) => r.data),
+    onSuccess: () => refetchPath(),
+  });
+
+  const [browsing, setBrowsing] = useState(false);
+  async function handleBrowse() {
+    setBrowsing(true);
+    try {
+      const res = await syncApi.browseFolder();
+      if (res.data.path) setPathInput(res.data.path);
+    } finally {
+      setBrowsing(false);
+    }
+  }
 
   const syncMutation = useMutation({
     mutationFn: () => syncApi.scan().then((r) => r.data),
@@ -33,6 +64,11 @@ export default function DocumentsPage() {
     (syncResult?.docs_imported.length ?? 0) +
     (syncResult?.referentiels_generated.length ?? 0);
 
+  function startEdit() {
+    setPathInput(pathInfo?.storage_dir ?? "");
+    setEditingPath(true);
+  }
+
   return (
     <div>
       <Header
@@ -41,18 +77,108 @@ export default function DocumentsPage() {
       />
 
       {/* Sync banner */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <FolderOpen className="w-5 h-5 text-[#A100FF] shrink-0" />
-            <div>
-              <p className="font-semibold text-black text-sm">Synchronisation des dossiers</p>
-              <p className="text-xs text-[#6A6A6A]">
-                Scanne <code className="bg-[#F2F2F2] px-1">storage/documents/produits/</code> et{" "}
-                <code className="bg-[#F2F2F2] px-1">storage/documents/generique/</code>
-              </p>
+      <div className="card mb-6 space-y-4">
+
+        {/* Storage path config */}
+        <div className="border border-[#E0E0E0] bg-[#FAFAFA] p-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <FolderOpen className="w-4 h-4 text-[#A100FF] shrink-0" />
+              <span className="text-xs font-semibold text-black">Répertoire source</span>
+              {pathInfo && (
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                  pathInfo.is_custom
+                    ? "bg-purple-100 text-purple-700 border border-purple-200"
+                    : "bg-[#F2F2F2] text-[#6A6A6A] border border-[#E0E0E0]"
+                }`}>
+                  {pathInfo.is_custom ? "Partagé" : "Local"}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {!editingPath && pathInfo?.is_custom && (
+                <button
+                  onClick={() => resetPathMutation.mutate()}
+                  disabled={resetPathMutation.isPending}
+                  title="Revenir au chemin local par défaut"
+                  className="text-[#6A6A6A] hover:text-black p-1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {!editingPath && (
+                <button
+                  onClick={startEdit}
+                  className="text-[#6A6A6A] hover:text-[#A100FF] p-1"
+                  title="Modifier le répertoire"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
+
+          {editingPath ? (
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={pathInput}
+                  onChange={(e) => setPathInput(e.target.value)}
+                  placeholder="Ex: C:\Users\...\OneDrive - Accenture\01ApplicactionCartoProduit\storage"
+                  className="flex-1 text-xs font-mono border border-[#A100FF] bg-white px-2 py-1.5 outline-none min-w-0"
+                />
+                <button
+                  onClick={handleBrowse}
+                  disabled={browsing}
+                  className="flex items-center gap-1.5 text-xs px-2 py-1.5 border border-[#A100FF] text-[#A100FF] bg-white hover:bg-purple-50 whitespace-nowrap"
+                >
+                  <FolderSearch className="w-3.5 h-3.5" />
+                  {browsing ? "…" : "Parcourir"}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPathMutation.mutate(pathInput)}
+                  disabled={setPathMutation.isPending || !pathInput.trim()}
+                  className="btn-primary flex items-center gap-1 text-xs px-2 py-1.5"
+                >
+                  <Save className="w-3 h-3" />
+                  {setPathMutation.isPending ? "…" : "Valider"}
+                </button>
+                <button
+                  onClick={() => setEditingPath(false)}
+                  className="text-xs text-[#6A6A6A] hover:text-black px-2 py-1.5 border border-[#E0E0E0] bg-white"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] font-mono text-[#3A3A3A] truncate">
+              {pathInfo?.storage_dir ?? "…"}
+            </p>
+          )}
+
+          {setPathMutation.isError && (
+            <p className="mt-1 text-[10px] text-red-600">
+              {String((setPathMutation.error as Error)?.message ?? "Chemin invalide")}
+            </p>
+          )}
+
+          {!editingPath && pathInfo && (
+            <p className="mt-1 text-[10px] text-[#6A6A6A]">
+              Scanne{" "}
+              <code className="bg-white border border-[#E0E0E0] px-1">{pathInfo.storage_dir}\documents\produits\</code>{" "}
+              et{" "}
+              <code className="bg-white border border-[#E0E0E0] px-1">{pathInfo.storage_dir}\documents\generique\</code>
+            </p>
+          )}
+        </div>
+
+        {/* Sync action */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <p className="text-sm font-semibold text-black">Synchronisation des dossiers</p>
           <button
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
@@ -64,7 +190,7 @@ export default function DocumentsPage() {
         </div>
 
         {syncMutation.isError && (
-          <div className="mt-4 flex items-start gap-2 text-[#FF3333] text-sm bg-red-50 border border-red-200 px-3 py-2">
+          <div className="flex items-start gap-2 text-[#FF3333] text-sm bg-red-50 border border-red-200 px-3 py-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
               <strong>Erreur lors de la synchronisation.</strong>
@@ -76,7 +202,7 @@ export default function DocumentsPage() {
         )}
 
         {syncResult && !syncMutation.isPending && (
-          <div className="mt-4 border-t border-[#E0E0E0] pt-4 space-y-3">
+          <div className="border-t border-[#E0E0E0] pt-4 space-y-3">
             <div className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-green-600" />
               <span className="text-sm font-medium text-black">

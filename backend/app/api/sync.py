@@ -1,6 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pathlib import Path
+from pydantic import BaseModel
+from typing import Optional
+import json
+
 from app.database import get_db
 from app.services.folder_sync_service import scan_folders, ALLOWED_EXTENSIONS
 from app.services import document_service
@@ -10,11 +14,87 @@ import traceback
 
 router = APIRouter(prefix="/sync", tags=["Sync"])
 
+_CONFIG_FILE = Path(settings.storage_dir) / "custom_config.json"
+
+
+def _load_custom_config() -> dict:
+    if _CONFIG_FILE.exists():
+        try:
+            return json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+class StoragePathRequest(BaseModel):
+    storage_dir: str
+
+
+@router.get("/storage-path")
+def get_storage_path():
+    cfg = _load_custom_config()
+    custom = cfg.get("documents_dir")
+    return {
+        "storage_dir": cfg.get("storage_dir", settings.storage_dir),
+        "documents_dir": custom or settings.documents_dir,
+        "is_custom": custom is not None,
+    }
+
+
+@router.post("/storage-path")
+def set_storage_path(body: StoragePathRequest):
+    p = Path(body.storage_dir.strip())
+    if not p.exists():
+        raise HTTPException(status_code=400, detail=f"Chemin introuvable : {p}")
+    config = {
+        "storage_dir": str(p),
+        "documents_dir": str(p / "documents"),
+    }
+    _CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"storage_dir": str(p), "documents_dir": str(p / "documents"), "is_custom": True}
+
+
+@router.delete("/storage-path")
+def reset_storage_path():
+    if _CONFIG_FILE.exists():
+        _CONFIG_FILE.unlink()
+    return {
+        "storage_dir": settings.storage_dir,
+        "documents_dir": settings.documents_dir,
+        "is_custom": False,
+    }
+
+
+@router.get("/browse-folder")
+async def browse_folder():
+    """Open a native Windows folder picker in a thread so it doesn't block the server."""
+    import asyncio
+
+    def _open_dialog():
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.wm_attributes("-topmost", 1)
+            folder = filedialog.askdirectory(title="Sélectionner le répertoire storage")
+            root.destroy()
+            return str(Path(folder)) if folder else None
+        except Exception as e:
+            return None
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _open_dialog)
+    return {"path": result}
+
 
 @router.post("/scan")
 def sync_scan(db: Session = Depends(get_db)):
     """Scan storage folders, create missing products, import new documents, and generate referentiels."""
-    return scan_folders(db)
+    cfg = _load_custom_config()
+    custom_documents_dir = cfg.get("documents_dir")
+    return scan_folders(db, custom_documents_dir=custom_documents_dir)
 
 
 @router.get("/debug")
