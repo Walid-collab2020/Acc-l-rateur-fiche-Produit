@@ -1223,7 +1223,7 @@ def analyze_and_fill_fpp(
         f"{len(all_items)} champs, {filled} renseignés, "
         f"{len(warnings)} warning(s)"
     )
-    return all_items, warnings
+    return all_items, warnings, next_version
 
 
 # ---------------------------------------------------------------------------
@@ -1234,7 +1234,7 @@ def extract_rules_for_direct(
     db: Session, product_id: int, document_ids: list[int]
 ) -> tuple[int, list[dict]]:
     """Délègue vers le nouveau moteur. Retourne (version, warnings)."""
-    items, warnings = analyze_and_fill_fpp(db, product_id, document_ids)
+    items, warnings, _ = analyze_and_fill_fpp(db, product_id, document_ids)
     max_ver = (
         db.query(sqlfunc.max(FicheDirectItem.version_number))
         .filter(FicheDirectItem.product_id == product_id)
@@ -1262,7 +1262,7 @@ def fill_fiche_from_extracted(
 
 def generate_fiche_direct(
     db: Session, product_id: int, document_ids: list[int]
-) -> tuple[list[FicheDirectItem], list[dict]]:
+) -> tuple[list[FicheDirectItem], list[dict], int]:
     """Wrapper rétrocompat."""
     return analyze_and_fill_fpp(db, product_id, document_ids)
 

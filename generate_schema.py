@@ -294,6 +294,6 @@ add_textbox(slide, "© Accenture — Confidentiel — Application IA Migration K
     0.2, 7.18, 12.9, 0.28, Pt(8), color=GRIS_CLAIR, align=PP_ALIGN.CENTER)
 
 # ── Sauvegarde ───────────────────────────────────────────────────────────────
-output_path = r"c:\01ApplicactionCartoProduit\Schema_Application_KELIA.pptx"
+output_path = r"C:\Users\walid.ben.lamine\OneDrive - Accenture\01ApplicactionCartoProduit\Schema_Application_KELIA.pptx"
 prs.save(output_path)
 print(f"OK - Fichier genere : {output_path}")

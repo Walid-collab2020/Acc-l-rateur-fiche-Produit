@@ -1,6 +1,6 @@
 
 import sqlite3, json
-conn = sqlite3.connect("c:/01ApplicactionCartoProduit/storage/db/kelia.db")
+conn = sqlite3.connect("C:/Users/walid.ben.lamine/OneDrive - Accenture/01ApplicactionCartoProduit/storage/db/kelia.db")
 
 # All versions with item counts
 print("=== ALL VERSIONS ===")

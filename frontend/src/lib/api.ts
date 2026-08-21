@@ -381,12 +381,14 @@ export const ficheDirectApi = {
       tokens_input?: number;
       tokens_output?: number;
       tokens_total?: number;
+      version_number?: number;
     }>(`/fiche2/${product_id}/generate`, {
       document_ids,
       provider,
       sheets: sheets ?? null,
       template_filename: template_filename ?? null,
     }),
+
   checkDocuments: (product_id: number, document_ids: number[]) =>
     api.get<{ documents: { id: number; name: string; type: string }[]; warnings: DocWarning[] }>(
       `/fiche2/${product_id}/check-documents`,

@@ -155,7 +155,7 @@ def generate(product_id: int, body: GenerateDirectRequest, db: Session = Depends
     """Génère la FPP complète — 4 appels LLM parallèles, prompt expert Actuaire/MOA."""
     try:
         set_active_provider(body.provider)
-        items, warnings = analyze_and_fill_fpp(db, product_id, body.document_ids, body.sheets, body.template_filename)
+        items, warnings, version_number = analyze_and_fill_fpp(db, product_id, body.document_ids, body.sheets, body.template_filename)
         filled = sum(1 for i in items if i.value and i.value not in ("Information manquante", "Aucune regle mentionnee dans les documents analyses"))
         conflict_count = sum(1 for i in items if i.conflict)
         avg_confidence = (
@@ -170,6 +170,7 @@ def generate(product_id: int, body: GenerateDirectRequest, db: Session = Depends
             "conflict_count": conflict_count,
             "avg_confidence_pct": avg_confidence,
             "warnings": warnings,
+            "version_number": version_number,
             **token_stats,
         }
     except ValueError as e:

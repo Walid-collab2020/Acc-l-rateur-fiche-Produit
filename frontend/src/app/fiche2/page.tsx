@@ -517,7 +517,12 @@ export default function FicheProduit2Page() {
       queryClient.invalidateQueries({ queryKey: ["fiche2-versions", selectedProduct] });
       queryClient.invalidateQueries({ queryKey: ["fiche2-items", selectedProduct] });
       queryClient.invalidateQueries({ queryKey: ["fiche2-extra-info", selectedProduct] });
-      setSelectedVersion(null);
+      // Sélectionne explicitement la version générée pour forcer l'affichage immédiat
+      if (data.version_number) {
+        setSelectedVersion(data.version_number);
+      } else {
+        setSelectedVersion(null);
+      }
     },
     onError: () => setIsGenerating(false),
   });

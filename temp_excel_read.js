@@ -1,5 +1,5 @@
 ﻿const XLSX = require('./temp_xlsx_env/node_modules/xlsx');
-const path = "c:\\01ApplicactionCartoProduit\\storage\\documents\\produits\\Produit0_DEMO\\Fichier Paramétrage KELIA\\04 Fiche_parametrage_KELIA V1.xlsx";
+const path = "C:\\Users\\walid.ben.lamine\\OneDrive - Accenture\\01ApplicactionCartoProduit\\storage\\documents\\produits\\Produit0_DEMO\\Fichier Paramétrage KELIA\\04 Fiche_parametrage_KELIA V1.xlsx";
 const wb = XLSX.readFile(path);
 console.log('Sheets:', JSON.stringify(wb.SheetNames));
 wb.SheetNames.forEach(name => {

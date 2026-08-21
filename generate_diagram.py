@@ -258,7 +258,7 @@ txt(ax, 10.0, 0.48, "Application IA Migration KELIA  ·  Architecture Flux Docum
 txt(ax, 19.3, 0.48, ">", size=14, bold=True, color=AC_PURPLE)
 
 # ── Sauvegarde ────────────────────────────────────────────────────────────────
-out = r"c:\01ApplicactionCartoProduit\schema_kelia_accenture.png"
+out = r"C:\Users\walid.ben.lamine\OneDrive - Accenture\01ApplicactionCartoProduit\schema_kelia_accenture.png"
 plt.tight_layout(pad=0)
 plt.savefig(out, dpi=180, bbox_inches="tight", facecolor=AC_DARK)
 plt.close()
